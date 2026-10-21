@@ -78,6 +78,25 @@
       
       <!-- Topic Presets -->
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+        <!-- Model Specialization Trait Selector -->
+        <div class="space-y-1.5 pb-2 border-b border-slate-800/80">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-semibold text-white uppercase tracking-wide">Model Specialization Trait</label>
+            <span id="activeTraitBadge" class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/60">Coding</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" onclick="selectTrait('coding')" id="traitCodingBtn" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/30 text-indigo-300 border border-indigo-500/60 flex items-center justify-center space-x-1.5 transition">
+              <span>💻 Coding</span>
+            </button>
+            <button type="button" onclick="selectTrait('reasoning')" id="traitReasoningBtn" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center justify-center space-x-1.5 transition">
+              <span>🧠 Reasoning</span>
+            </button>
+            <button type="button" onclick="selectTrait('tool_use')" id="traitToolBtn" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center justify-center space-x-1.5 transition">
+              <span>🛠️ Tool Use</span>
+            </button>
+          </div>
+        </div>
+
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-white tracking-wide uppercase flex items-center space-x-2">
             <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
@@ -311,6 +330,7 @@
   <!-- Application Logic Scripts -->
   <script>
     let currentPresets = [];
+    let currentTrait = 'coding';
     let stagedSamples = [];
     let committedSamples = [];
     let activeTab = 'staging';
@@ -322,29 +342,62 @@
       await loadCommitted();
     }
 
+    function selectTrait(trait) {
+      currentTrait = trait;
+      const badge = document.getElementById('activeTraitBadge');
+      const btnCoding = document.getElementById('traitCodingBtn');
+      const btnReasoning = document.getElementById('traitReasoningBtn');
+      const btnTool = document.getElementById('traitToolBtn');
+
+      [btnCoding, btnReasoning, btnTool].forEach(b => {
+        b.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center justify-center space-x-1.5 transition';
+      });
+
+      if (trait === 'coding') {
+        badge.innerText = 'Coding';
+        badge.className = 'text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/60';
+        btnCoding.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/30 text-indigo-300 border border-indigo-500/60 flex items-center justify-center space-x-1.5 transition';
+      } else if (trait === 'reasoning') {
+        badge.innerText = 'Reasoning';
+        badge.className = 'text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/60';
+        btnReasoning.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600/30 text-amber-300 border border-amber-500/60 flex items-center justify-center space-x-1.5 transition';
+      } else if (trait === 'tool_use') {
+        badge.innerText = 'Tool Use';
+        badge.className = 'text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/60';
+        btnTool.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/30 text-emerald-300 border border-emerald-500/60 flex items-center justify-center space-x-1.5 transition';
+      }
+
+      renderPresetsForTrait();
+    }
+
+    function renderPresetsForTrait() {
+      const container = document.getElementById('presetPills');
+      container.innerHTML = '';
+      const filtered = currentPresets.filter(p => !p.trait || p.trait === currentTrait);
+      
+      filtered.forEach((p, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `text-xs px-2.5 py-1 rounded-lg border font-medium transition focus-visible:ring-1 focus-visible:ring-indigo-500 ${
+          idx === 0 
+            ? 'bg-indigo-950/70 border-indigo-700/80 text-indigo-300 hover:bg-indigo-900/80' 
+            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+        }`;
+        btn.innerText = p.name;
+        btn.onclick = () => selectPreset(p);
+        container.appendChild(btn);
+      });
+
+      if (filtered.length > 0) {
+        selectPreset(filtered[0]);
+      }
+    }
+
     async function loadPresets() {
       try {
         const res = await fetch('/api/presets');
         currentPresets = await res.json();
-        const container = document.getElementById('presetPills');
-        container.innerHTML = '';
-
-        currentPresets.forEach((p, idx) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = `text-xs px-2.5 py-1 rounded-lg border font-medium transition focus-visible:ring-1 focus-visible:ring-indigo-500 ${
-            idx === 0 
-              ? 'bg-indigo-950/70 border-indigo-700/80 text-indigo-300 hover:bg-indigo-900/80' 
-              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-          }`;
-          btn.innerText = p.name;
-          btn.onclick = () => selectPreset(p);
-          container.appendChild(btn);
-        });
-
-        if (currentPresets.length > 0) {
-          selectPreset(currentPresets[0]);
-        }
+        renderPresetsForTrait();
       } catch (err) {
         console.error('Failed to load presets:', err);
       }
@@ -490,6 +543,7 @@
         const payload = {
           topic: topic,
           count: count,
+          trait: currentTrait,
           custom_prompt: customPrompt || null,
           model: model,
           auto_commit: autoCommit

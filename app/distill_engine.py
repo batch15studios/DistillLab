@@ -14,9 +14,9 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 class SFTEntry(BaseModel):
-    system: str = Field(description="Role, persona guidance, and system context tailored for qwen2.5-coder fine-tuning")
-    instruction: str = Field(description="The detailed user coding problem or question")
-    response: str = Field(description="Complete verified answer containing runnable code in markdown fences, complexity analysis, and error handling")
+    system: str = Field(description="Role, persona guidance, tool definitions, and system context tailored for qwen2.5-coder fine-tuning")
+    instruction: str = Field(description="The detailed user coding problem, reasoning question, or agentic task")
+    response: str = Field(description="Complete verified answer containing runnable code, structured reasoning trace, or valid tool call invocation")
 
 class SFTBatch(BaseModel):
     samples: List[SFTEntry]
@@ -58,14 +58,6 @@ def validate_python_code(text: str) -> Tuple[bool, List[str]]:
             except Exception as e:
                 return False, [f"Python block #{idx} parse error: {str(e)}"]
         return True, notes
-
-    # If no fences, but this is clearly raw Python code (and not C/C++):
-    if not is_cpp_snippet(text) and ("def " in text or ("class " in text and ":" in text and "{" not in text)):
-        try:
-            ast.parse(text)
-            return True, ["Raw Python code verified via ast.parse()"]
-        except SyntaxError as e:
-            return False, [f"Python SyntaxError at line {e.lineno}: {e.msg}"]
 
     return True, ["No Python code blocks detected"]
 
@@ -190,6 +182,9 @@ def validate_error_handling(text: str) -> Tuple[bool, str]:
         r"\b(nullptr|NULL)\b",
         r"\berrno\b",
         r"\bperror\b",
+        r"\bif\s+err\s*!=\s*nil\b",
+        r"\b(fmt\.Errorf|errors\.New|panic|recover)\b",
+        r"\b(Result<|Option<|unwrap_or|ok_or)\b",
         r"\bif\s*\([^)]*(==\s*null|< 0|!= 0|!ptr|!fd|is None|not\s|is\s+none|nullptr)",
         r"\b(std::optional|std::expected|Result<|Option<)\b",
         r"\b(ValueError|TypeError|RuntimeError|IndexError|KeyError|std::exception|std::runtime_error|std::invalid_argument|std::out_of_range)\b",
@@ -201,40 +196,120 @@ def validate_error_handling(text: str) -> Tuple[bool, str]:
             return True, "Error handling and validation verified"
     return False, "Missing proper error handling, exception guards, or boundary validation"
 
-def validate_sample(item: SFTEntry) -> Tuple[bool, List[str], List[str]]:
-    """Runs the complete validation pipeline on a single distilled sample."""
+def detect_trait(item: SFTEntry, explicit_trait: Optional[str] = None) -> str:
+    if explicit_trait and explicit_trait.lower() in ["coding", "reasoning", "tool_use", "general"]:
+        return explicit_trait.lower()
+    
+    text = f"{item.system} {item.instruction} {item.response}".lower()
+    if "<tool_call>" in text or '"tool_calls"' in text or "tool" in item.system.lower() or "tools:" in text:
+        return "tool_use"
+    if any(k in text for k in ["root cause", "rca", "proof", "trade-off", "tradeoff", "why does", "derive", "analysis of", "deadlock analysis", "cache coherence"]):
+        return "reasoning"
+    return "coding"
+
+def get_trait_instructions(trait: str) -> str:
+    t = trait.lower().strip()
+    if t == "tool_use":
+        return """Strict Output Requirements for Tool-Calling Agent Fine-Tuning:
+1. Provide a system prompt with clear tool definitions (e.g. tools for run_command, read_file, search_code).
+2. The user instruction must represent a concrete task requiring tool invocation or inspection.
+3. The assistant response MUST invoke tools using standard ChatML tool call syntax:
+   <tool_call>
+   {"name": "tool_name", "arguments": {"arg1": "value1"}}
+   </tool_call>
+4. Include realistic tool workflows: reasoning about why the tool is selected, command arguments, and error handling/edge cases.
+5. Zero placeholder arguments or omitted values.
+"""
+    elif t == "reasoning":
+        return """Strict Output Requirements for Deep Technical Reasoning Fine-Tuning:
+1. Formulate complex, senior-level computer science, systems, or concurrency reasoning problems.
+2. The assistant response MUST provide a thorough, structured, step-by-step analytical derivation or root-cause analysis (RCA).
+3. Explicitly explain underlying invariants, architectural trade-offs, failure modes, and mathematical or logical proofs.
+4. If code is needed to illustrate the reasoning, ensure it is 100% syntactically valid and runnable with zero omissions.
+5. No hand-waving or superficial summaries; provide deep technical signal.
+"""
+    else:  # coding
+        return """Strict Output Requirements for Coding Fine-Tuning:
+1. Generate unique, senior-level, highly educational programming tasks and verified complete solutions.
+2. Complete runnable code with zero omissions (no placeholders, no '// implement here', no 'TODO').
+3. Wrap all runnable code in standard markdown code blocks (e.g. ```cpp ... ``` or ```python ... ```).
+4. Always provide explicit Time Complexity and Space Complexity analysis with Big-O notation.
+5. Demonstrate explicit error handling, boundary checks, and robust invariant management.
+6. All Python snippets must pass ast.parse(). All C/C++ snippets must have balanced brackets and valid syntax.
+"""
+
+def validate_sample(item: SFTEntry, trait: Optional[str] = None) -> Tuple[bool, List[str], List[str]]:
+    """Runs the trait-aware validation pipeline on a single distilled sample."""
     passed_notes = []
     failure_reasons = []
 
-    # 1. Python AST parse check
+    resolved_trait = detect_trait(item, trait)
+
+    # 1. Any Python code present MUST pass ast.parse()
     py_ok, py_notes = validate_python_code(item.response)
     if py_ok:
         passed_notes.extend(py_notes)
     else:
         failure_reasons.extend(py_notes)
 
-    # 2. C/C++ bracket & syntax integrity
+    # 2. Any C/C++ code present MUST pass bracket & syntax integrity
     cpp_ok, cpp_notes = validate_cpp_code(item.response)
     if cpp_ok:
         passed_notes.extend(cpp_notes)
     else:
         failure_reasons.extend(cpp_notes)
 
-    # 3. Complexity analysis check
-    comp_ok, comp_note = validate_complexity(item.response)
-    if comp_ok:
-        passed_notes.append(comp_note)
-    else:
-        failure_reasons.append(comp_note)
+    # 3. Trait-specific validation
+    if resolved_trait == "tool_use":
+        # Validate tool-call syntax
+        tool_call_match = re.search(r"<tool_call>([\s\S]*?)</tool_call>", item.response)
+        if tool_call_match:
+            raw_json = tool_call_match.group(1).strip()
+            try:
+                parsed = json.loads(raw_json)
+                if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
+                    passed_notes.append(f"Valid tool call verified: '{parsed['name']}'")
+                else:
+                    failure_reasons.append("Tool call JSON must contain 'name' and 'arguments' keys")
+            except Exception as e:
+                failure_reasons.append(f"Invalid JSON inside <tool_call>: {e}")
+        elif '{"name":' in item.response or '"function":' in item.response:
+            passed_notes.append("JSON tool call format detected")
+        else:
+            failure_reasons.append("Missing structured <tool_call> block in tool-use response")
 
-    # 4. Error handling check
-    err_ok, err_note = validate_error_handling(item.response)
-    if err_ok:
-        passed_notes.append(err_note)
-    else:
-        failure_reasons.append(err_note)
+    elif resolved_trait == "reasoning":
+        # Validate structured reasoning depth
+        if len(item.response.strip()) < 150:
+            failure_reasons.append("Reasoning response too brief (< 150 characters); requires deep analytical breakdown")
+        else:
+            has_structure = bool(re.search(r"(###|\n\d+\.|\n- |\b(because|therefore|in order to|trade-off|consequence|root cause|invariant)\b)", item.response, re.IGNORECASE))
+            if has_structure:
+                passed_notes.append("Structured analytical reasoning verified")
+            else:
+                passed_notes.append("Reasoning content accepted")
+        
+        # Check complexity if present (bonus for reasoning, not mandatory)
+        comp_ok, comp_note = validate_complexity(item.response)
+        if comp_ok:
+            passed_notes.append(comp_note)
 
-    # 5. Non-omission check
+    else:  # coding
+        # 3. Complexity analysis check
+        comp_ok, comp_note = validate_complexity(item.response)
+        if comp_ok:
+            passed_notes.append(comp_note)
+        else:
+            failure_reasons.append(comp_note)
+
+        # 4. Error handling check
+        err_ok, err_note = validate_error_handling(item.response)
+        if err_ok:
+            passed_notes.append(err_note)
+        else:
+            failure_reasons.append(err_note)
+
+    # 5. Non-omission check across ALL traits
     if re.search(r"(//|#)\s*(implement here|todo|fill in|omitted|left as an exercise)", item.response, re.IGNORECASE):
         failure_reasons.append("Detected omission placeholder ('// implement here' / 'TODO')")
 
@@ -306,21 +381,16 @@ async def run_distillation(
     topic: str,
     count: int = 5,
     custom_prompt: Optional[str] = None,
+    trait: str = "coding",
     model: str = "gemini-3.5-flash-lite",
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Runs distillation, applies the live validation pipeline, and formats to ShareGPT/OpenAI messages schema."""
-    target_instructions = """Strict Output Requirements for Fine-Tuning qwen2.5-coder:1.5b:
-1. Generate unique, senior-level, highly educational programming tasks and verified complete solutions.
-2. Complete runnable code with zero omissions (no placeholders, no '// implement here', no 'TODO').
-3. Wrap all runnable code in standard markdown code blocks (e.g. ```cpp ... ``` or ```python ... ```).
-4. Always provide explicit Time Complexity and Space Complexity analysis with Big-O notation.
-5. Demonstrate explicit error handling, boundary checks, and robust invariant management.
-6. All Python snippets must pass ast.parse(). All C/C++ snippets must have balanced brackets and valid syntax.
-"""
+    """Runs distillation, applies the live trait-aware validation pipeline, and formats to ShareGPT/OpenAI messages schema."""
+    target_instructions = get_trait_instructions(trait)
 
     if custom_prompt and custom_prompt.strip():
-        prompt = f"""You are a Staff Software Engineer creating a high-density distillation dataset for fine-tuning qwen2.5-coder:1.5b.
+        prompt = f"""You are an elite Staff Software Engineer & AI Researcher creating a high-density dataset for fine-tuning qwen2.5-coder:1.5b.
+Target Trait: {trait}
 Custom focus: {custom_prompt.strip()}
 Primary Topic domain: {topic}
 Number of samples to generate: {count}
@@ -328,7 +398,8 @@ Number of samples to generate: {count}
 {target_instructions}
 """
     else:
-        prompt = f"""You are a Staff Software Engineer creating a high-density distillation dataset for fine-tuning qwen2.5-coder:1.5b.
+        prompt = f"""You are an elite Staff Software Engineer & AI Researcher creating a high-density dataset for fine-tuning qwen2.5-coder:1.5b.
+Target Trait: {trait}
 Target Topic: {topic}
 Number of samples to generate: {count}
 
@@ -346,7 +417,7 @@ Number of samples to generate: {count}
         item.instruction = sanitize_text(item.instruction)
         item.response = sanitize_text(item.response)
 
-        is_valid, passed_notes, failure_reasons = validate_sample(item)
+        is_valid, passed_notes, failure_reasons = validate_sample(item, trait=trait)
         full_text = f"{item.system} {item.instruction} {item.response}"
         tokens = estimate_tokens(full_text)
         sample_id = str(uuid.uuid4())
@@ -354,6 +425,7 @@ Number of samples to generate: {count}
         sample_record = {
             "id": sample_id,
             "topic": topic,
+            "trait": trait,
             "messages": [
                 {"role": "system", "content": item.system},
                 {"role": "user", "content": item.instruction},
@@ -373,6 +445,7 @@ Number of samples to generate: {count}
 
     return {
         "topic": topic,
+        "trait": trait,
         "model": model,
         "total_requested": count,
         "total_generated": len(batch.samples),

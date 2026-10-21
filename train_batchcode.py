@@ -118,7 +118,12 @@ def main():
     print(f"Loaded {len(dataset)} samples for training.")
 
     # 4. Train with SFTTrainer
-    print(f"[4/5] Starting headless SFTTrainer for {args.max_steps} steps...")
+    steps = args.max_steps
+    if steps <= 0 or (steps == 60 and len(dataset) > 50):
+        # Auto-compute 3 epochs with effective batch size 8
+        steps = max(60, int((len(dataset) * 3) / 8))
+
+    print(f"[4/5] Starting headless SFTTrainer for {steps} steps (~3 epochs of {len(dataset)} samples)...")
     output_dir = f"./outputs_{args.output_name}"
     trainer = SFTTrainer(
         model=model,
@@ -130,8 +135,8 @@ def main():
         args=TrainingArguments(
             per_device_train_batch_size=1,
             gradient_accumulation_steps=8,
-            warmup_steps=5,
-            max_steps=args.max_steps,
+            warmup_steps=max(5, int(steps * 0.05)),
+            max_steps=steps,
             learning_rate=args.learning_rate,
             fp16=not torch.cuda.is_bf16_supported(),
             bf16=torch.cuda.is_bf16_supported(),

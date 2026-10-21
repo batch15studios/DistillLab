@@ -22,35 +22,85 @@ DATASET_PATH = "data/cs_programming_dataset.jsonl"
 TEMPLATE_PATH = Path("app/templates/index.html")
 
 TOPIC_PRESETS = [
+    # Coding Presets
     {
         "id": "systems_cpp",
+        "trait": "coding",
         "name": "Systems Programming (C/C++)",
         "topic": "Systems Programming in C/C++ (Memory management, pointers, bitwise manipulation, RAII)",
         "prompt_hint": "Focus on manual memory management, pointer arithmetic, custom allocators, cache-friendly data layouts, and RAII wrappers."
     },
     {
         "id": "concurrency",
-        "name": "Concurrency & Threading",
+        "trait": "coding",
+        "name": "Concurrency & Multi-Threading",
         "topic": "Concurrency & Multi-Threading (Lock-free queues, atomic operations, mutexes, memory barriers)",
         "prompt_hint": "Focus on lock-free data structures, atomic memory order (acquire/release/relaxed), condition variables, and deadlock-free designs."
     },
     {
         "id": "graph_theory",
+        "trait": "coding",
         "name": "Algorithmic Graph Theory",
         "topic": "Algorithmic Graph Theory (Tarjan's SCC, Dinic's Max Flow, Shortest Paths, Topological Sort)",
         "prompt_hint": "Focus on production-grade graph algorithms, adjacency lists, cycle detection, strongly connected components, and min-cut/max-flow."
     },
     {
         "id": "os_internals",
-        "name": "OS Internals",
+        "trait": "coding",
+        "name": "OS Internals & Kernels",
         "topic": "OS Internals & Kernel Subsystems (Virtual memory paging, process scheduling, IPC, system calls)",
         "prompt_hint": "Focus on page table traversal, epoll/kqueue event loops, fork/exec, shared memory IPC, and signal handling in POSIX systems."
     },
     {
         "id": "db_engines",
-        "name": "Database Engines",
+        "trait": "coding",
+        "name": "Database Storage Engines",
         "topic": "Database Storage Engines (B+ Trees, LSM-Trees, Write-Ahead Logging (WAL), Buffer Pools)",
         "prompt_hint": "Focus on B+ tree node splitting/merging, SSTable compaction, append-only commit logs, and LRU/Clock buffer pool management."
+    },
+    # Reasoning Presets
+    {
+        "id": "concurrency_rca",
+        "trait": "reasoning",
+        "name": "Concurrency Bug & Race RCA",
+        "topic": "Concurrency Bug Analysis & Race Condition RCA (Deadlocks, ABA problems, lock inversion, memory visibility)",
+        "prompt_hint": "Provide deep root-cause analysis, step-by-step trace of concurrent thread schedules, invariant proofs, and remediation."
+    },
+    {
+        "id": "cache_coherence",
+        "trait": "reasoning",
+        "name": "Cache Coherence & Architecture",
+        "topic": "Hardware Architecture & Cache Coherence (L1/L2/L3 cache lines, false sharing, MESI protocol, memory bus contention)",
+        "prompt_hint": "Analyze cache-line bouncing, memory layout alignment tradeoffs, and performance degradation causes."
+    },
+    {
+        "id": "distributed_consensus",
+        "trait": "reasoning",
+        "name": "Distributed Consensus Proofs",
+        "topic": "Distributed Consensus & State Machine Replication (Raft election safety, log matching invariants, split-brain proofs)",
+        "prompt_hint": "Focus on rigorous proof of quorum intersections, election timeout dynamics, and partition recovery."
+    },
+    # Tool-Use Presets
+    {
+        "id": "terminal_agent",
+        "trait": "tool_use",
+        "name": "Terminal & Shell Tool Execution",
+        "topic": "Agentic Terminal Execution (Running commands, parsing grep/find output, error diagnosis, verifying exit codes)",
+        "prompt_hint": "Include structured <tool_call>{\"name\": \"run_command\", \"arguments\": {\"command\": \"...\"}}</tool_call> and result handling."
+    },
+    {
+        "id": "code_search_agent",
+        "trait": "tool_use",
+        "name": "Codebase Navigation & AST Search",
+        "topic": "Code Search & Multi-File Navigation (Finding symbol definitions, grepping references, reading file slices)",
+        "prompt_hint": "Demonstrate selecting appropriate search tools, reasoning about match sets, and locating target implementations."
+    },
+    {
+        "id": "git_workflow_agent",
+        "trait": "tool_use",
+        "name": "Git & Diff Patching Agent",
+        "topic": "Git Operations & Conflict Resolution (Inspecting git diff, branch management, staging atomic changes)",
+        "prompt_hint": "Demonstrate tool calls for checking git status, inspecting diff chunks, and applying surgical patches."
     }
 ]
 
@@ -58,6 +108,7 @@ class GenerateRequest(BaseModel):
     topic: str
     count: int = Field(default=5, ge=1, le=50)
     custom_prompt: Optional[str] = None
+    trait: str = Field(default="coding", description="Trait: coding, reasoning, tool_use, general")
     model: str = "gemini-3.5-flash-lite"
     auto_commit: bool = False
     api_key: Optional[str] = None
@@ -105,6 +156,7 @@ async def generate(req: GenerateRequest):
             topic=req.topic,
             count=req.count,
             custom_prompt=req.custom_prompt,
+            trait=req.trait,
             model=req.model,
             api_key=req.api_key
         )
