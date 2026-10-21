@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DistillLab | Local Dataset Distillation Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    pre code { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased text-slate-200 bg-slate-950">
+
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center font-mono font-bold text-lg text-white shadow-lg shadow-indigo-600/30">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-lg text-white tracking-tight">DistillLab</span>
+            <span class="text-xs px-2 py-0.5 rounded font-mono font-medium bg-indigo-950 text-indigo-400 border border-indigo-800/60">Gemini 2.5 Flash</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Senior-Level Synthetic Dataset Generator for LLM Fine-Tuning</p>
+        </div>
+      </div>
+
+      <!-- Action items & metrics -->
+      <div class="flex items-center space-x-3">
+        <button onclick="openKeyModal()" id="keyStatusBtn" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 bg-slate-800 hover:bg-slate-750 transition focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none">
+          <span id="keyDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="keyText">Checking API Key</span>
+        </button>
+
+        <div class="hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-mono">
+          <span class="text-slate-400">Dataset:</span>
+          <span id="headerSamplesCount" class="font-semibold text-emerald-400">0</span>
+          <span class="text-slate-500">|</span>
+          <span id="headerFileSize" class="text-slate-300">0.0 KB</span>
+        </div>
+
+        <a href="/api/export" download="cs_programming_dataset.jsonl" class="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          <span>Export .jsonl</span>
+        </a>
+      </div>
+    </div>
+  </header>
+  <!-- Main Grid Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+    <!-- Left Controls Panel (5 cols) -->
+    <section class="lg:col-span-5 space-y-6">
+      
+      <!-- Topic Presets -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-white tracking-wide uppercase flex items-center space-x-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <span>Topic Presets</span>
+          </h2>
+          <span class="text-xs text-slate-400">Click to load</span>
+        </div>
+
+        <div class="flex flex-wrap gap-2" id="presetPills">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <!-- Target Topic Input -->
+        <div class="space-y-1.5 pt-2 border-t border-slate-800/80">
+          <label for="topicInput" class="block text-xs font-medium text-slate-300">Target Topic / Domain</label>
+          <textarea id="topicInput" rows="2" class="w-full bg-slate-950 border border-slate-700/80 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus-visible:ring-1 focus-visible:ring-indigo-500 outline-none transition resize-none"></textarea>
+        </div>
+
+        <!-- Custom Prompt Override (Accordion) -->
+        <div class="border border-slate-800 rounded-lg bg-slate-950/60 overflow-hidden">
+          <button type="button" onclick="toggleCustomPrompt()" class="w-full px-3 py-2 text-left text-xs font-medium text-slate-400 hover:text-slate-200 flex items-center justify-between transition focus-visible:ring-1 focus-visible:ring-indigo-500">
+            <span class="flex items-center space-x-1.5">
+              <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              <span>Custom Prompt Override (Optional)</span>
+            </span>
+            <span id="promptChevron" class="text-slate-500">▼</span>
+          </button>
+          <div id="customPromptBody" class="hidden p-3 border-t border-slate-800/60 space-y-2">
+            <textarea id="customPromptInput" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-slate-200 placeholder-slate-600 focus:border-indigo-500 outline-none" placeholder="Provide specialized guidance, edge-case requirements, or benchmark constraints..."></textarea>
+            <p class="text-[11px] text-slate-500 leading-tight">When provided, this overrides standard generation guidelines with your custom instructions while retaining strict JSON schemas.</p>
+          </div>
+        </div>
+
+        <!-- Generation Parameters -->
+        <div class="grid grid-cols-2 gap-4 pt-2">
+          <!-- Batch Size Slider -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <label for="countSlider" class="font-medium text-slate-300">Batch Size</label>
+              <span id="countDisplay" class="font-mono font-bold text-indigo-400">5 samples</span>
+            </div>
+            <input id="countSlider" type="range" min="1" max="50" value="5" oninput="updateCountDisplay(this.value)" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+          </div>
+
+          <!-- Model Choice -->
+          <div class="space-y-1.5">
+            <label for="modelSelect" class="block text-xs font-medium text-slate-300">Gemini Model</label>
+            <select id="modelSelect" class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:border-indigo-500 outline-none">
+              <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite (Fastest, Recommended)</option><option value="gemini-3.8-flash">gemini-3.8-flash (Latest Model)</option><option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Staging Review vs Auto-commit Toggle -->
+        <div class="pt-2 flex items-center justify-between border-t border-slate-800/60">
+          <div>
+            <span class="block text-xs font-medium text-slate-300">Review Before Commit</span>
+            <span class="block text-[11px] text-slate-500">Stage in inspection table first</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="reviewToggle" class="sr-only peer" checked>
+            <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+
+        <!-- Primary CTA Button -->
+        <button id="runBtn" onclick="runGeneration()" class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-sm shadow-lg shadow-indigo-600/25 transition flex items-center justify-center space-x-2 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none">
+          <svg id="btnIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span id="btnText">Start Distillation Pipeline</span>
+        </button>
+
+        <!-- Live Status ticker -->
+        <div id="statusBox" class="hidden text-xs font-mono p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 space-y-1">
+          <div class="flex items-center space-x-2 text-indigo-400">
+            <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+            <span id="statusTitle">Distilling dataset...</span>
+          </div>
+          <p id="statusDetail" class="text-slate-400 text-[11px]">Connecting to Gemini API with structured outputs schema...</p>
+        </div>
+
+      </div>
+
+      <!-- Live Pipeline Rules Overview -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-3">
+        <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Automated Validation Guards</h3>
+        <div class="grid grid-cols-2 gap-2.5 text-xs">
+          <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
+            <div class="flex items-center space-x-1.5 text-emerald-400 font-mono font-medium">
+              <span>✓</span>
+              <span>Python AST</span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-tight">Parses all Python blocks via <code class="text-slate-300">ast.parse()</code></p>
+          </div>
+          <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
+            <div class="flex items-center space-x-1.5 text-emerald-400 font-mono font-medium">
+              <span>✓</span>
+              <span>C/C++ Syntax</span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-tight">Validates bracket, brace, and structural integrity</p>
+          </div>
+          <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
+            <div class="flex items-center space-x-1.5 text-emerald-400 font-mono font-medium">
+              <span>✓</span>
+              <span>Complexity</span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-tight">Requires explicit Time & Space Big-O analysis</p>
+          </div>
+          <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
+            <div class="flex items-center space-x-1.5 text-emerald-400 font-mono font-medium">
+              <span>✓</span>
+              <span>Error Handling</span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-tight">Enforces boundary checks and exception safety</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Right Content Area: Staging Table & Committed Dataset (7 cols) -->
+    <section class="lg:col-span-7 flex flex-col space-y-4">
+      
+      <!-- Tab Header Navigation -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div class="flex space-x-3">
+          <button id="tabStagingBtn" onclick="switchTab('staging')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-400 border border-indigo-800/50 flex items-center space-x-1.5 transition">
+            <span>Live Staging Table</span>
+            <span id="stagingBadge" class="bg-indigo-900/80 text-indigo-300 px-1.5 py-0.2 rounded-full text-[10px]">0</span>
+          </button>
+          <button id="tabCommittedBtn" onclick="switchTab('committed')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-800 flex items-center space-x-1.5 transition">
+            <span>Committed Dataset</span>
+            <span id="committedBadge" class="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded-full text-[10px]">0</span>
+          </button>
+        </div>
+
+        <div id="stagingBatchActions" class="hidden flex items-center space-x-2">
+          <button onclick="commitAllStaged()" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition shadow-sm">
+            Commit All Valid
+          </button>
+          <button onclick="discardAllStaged()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+            Discard All
+          </button>
+        </div>
+
+        <div id="committedSearchActions" class="hidden flex items-center space-x-2">
+          <input id="committedSearchInput" oninput="debounceSearchCommitted(this.value)" type="text" placeholder="Search dataset..." class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 placeholder-slate-500 w-36 sm:w-48 outline-none focus:border-indigo-500">
+          <button onclick="runSanitizeDataset()" title="Strip invalid preprocessor directives (#template, #requires, #concept)" class="flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            <span>Sanitize</span>
+          </button>
+          <button onclick="refreshCommitted()" title="Refresh" class="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">
+            ↻
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab View 1: Staging / Live Inspection -->
+      <div id="stagingView" class="flex-1 space-y-4">
+        
+        <!-- Empty State -->
+        <div id="stagingEmpty" class="border border-dashed border-slate-800 rounded-xl p-12 text-center space-y-3 bg-slate-900/30">
+          <div class="w-12 h-12 rounded-full bg-slate-800/80 mx-auto flex items-center justify-center text-slate-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+          </div>
+          <h3 class="text-sm font-medium text-slate-200">No Generated Samples in Staging</h3>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto">Select a topic preset on the left and click "Start Distillation Pipeline" to generate, validate, and inspect pairs.</p>
+        </div>
+
+        <!-- Staging List Container -->
+        <div id="stagingList" class="space-y-4 hidden">
+          <!-- Rendered dynamically -->
+        </div>
+
+      </div>
+
+      <!-- Tab View 2: Committed Dataset -->
+      <div id="committedView" class="hidden flex-1 space-y-4">
+        
+        <div id="committedEmpty" class="border border-dashed border-slate-800 rounded-xl p-12 text-center space-y-3 bg-slate-900/30">
+          <div class="w-12 h-12 rounded-full bg-slate-800/80 mx-auto flex items-center justify-center text-slate-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+          </div>
+          <h3 class="text-sm font-medium text-slate-200">Dataset File is Currently Empty</h3>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto">Committed samples are appended to <code class="text-indigo-400 font-mono">data/cs_programming_dataset.jsonl</code> in standard ShareGPT/OpenAI messages schema.</p>
+        </div>
+
+        <div id="committedList" class="space-y-4 hidden">
+          <!-- Rendered dynamically -->
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+  <!-- API Key Modal Dialog -->
+  <div id="keyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white flex items-center space-x-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+          <span>Gemini API Configuration</span>
+        </h3>
+        <button onclick="closeKeyModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+      <p class="text-xs text-slate-400">Enter your Gemini API key to enable distillation runs with <code class="text-indigo-300">gemini-2.5-flash</code>. It will be stored in your local <code class="text-slate-300">.env</code> file.</p>
+      
+      <div class="space-y-2">
+        <label for="modalApiKey" class="block text-xs font-medium text-slate-300">API Key</label>
+        <input id="modalApiKey" type="password" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-100 placeholder-slate-600 focus:border-indigo-500 outline-none">
+      </div>
+
+      <div class="flex items-center justify-between text-xs pt-2">
+        <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
+          <input type="checkbox" id="modalSaveEnv" checked class="rounded bg-slate-800 border-slate-700 text-indigo-600 focus:ring-0">
+          <span>Save to local .env</span>
+        </label>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-indigo-400 hover:text-indigo-300 flex items-center space-x-1">
+          <span>Get API Key</span>
+          <span>↗</span>
+        </a>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-2">
+        <button onclick="closeKeyModal()" class="px-4 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Cancel</button>
+        <button onclick="saveApiKey()" class="px-4 py-2 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition">Save & Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Logic Scripts -->
+  <script>
+    let currentPresets = [];
+    let stagedSamples = [];
+    let committedSamples = [];
+    let activeTab = 'staging';
+
+    async function init() {
+      await loadPresets();
+      await checkKeyStatus();
+      await refreshStats();
+      await loadCommitted();
+    }
+
+    async function loadPresets() {
+      try {
+        const res = await fetch('/api/presets');
+        currentPresets = await res.json();
+        const container = document.getElementById('presetPills');
+        container.innerHTML = '';
+
+        currentPresets.forEach((p, idx) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `text-xs px-2.5 py-1 rounded-lg border font-medium transition focus-visible:ring-1 focus-visible:ring-indigo-500 ${
+            idx === 0 
+              ? 'bg-indigo-950/70 border-indigo-700/80 text-indigo-300 hover:bg-indigo-900/80' 
+              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+          }`;
+          btn.innerText = p.name;
+          btn.onclick = () => selectPreset(p);
+          container.appendChild(btn);
+        });
+
+        if (currentPresets.length > 0) {
+          selectPreset(currentPresets[0]);
+        }
+      } catch (err) {
+        console.error('Failed to load presets:', err);
+      }
+    }
+
+    function selectPreset(preset) {
+      document.getElementById('topicInput').value = preset.topic;
+      const customInput = document.getElementById('customPromptInput');
+      if (!customInput.value.trim() && preset.prompt_hint) {
+        customInput.placeholder = preset.prompt_hint;
+      }
+      const pills = document.querySelectorAll('#presetPills button');
+      pills.forEach(pill => {
+        if (pill.innerText === preset.name) {
+          pill.className = 'text-xs px-2.5 py-1 rounded-lg border font-medium transition bg-indigo-950/70 border-indigo-700/80 text-indigo-300';
+        } else {
+          pill.className = 'text-xs px-2.5 py-1 rounded-lg border font-medium transition bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700';
+        }
+      });
+    }
+
+    function toggleCustomPrompt() {
+      const body = document.getElementById('customPromptBody');
+      const chevron = document.getElementById('promptChevron');
+      body.classList.toggle('hidden');
+      chevron.innerText = body.classList.contains('hidden') ? '▼' : '▲';
+    }
+
+    function updateCountDisplay(val) {
+      document.getElementById('countDisplay').innerText = `${val} samples`;
+    }
+
+    async function checkKeyStatus() {
+      try {
+        const res = await fetch('/api/config/key-status');
+        const data = await res.json();
+        const dot = document.getElementById('keyDot');
+        const text = document.getElementById('keyText');
+        if (data.is_configured) {
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          text.innerText = 'API Key Configured';
+        } else {
+          dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+          text.innerText = 'Set Gemini API Key';
+        }
+      } catch (err) {
+        console.error('Key status check failed:', err);
+      }
+    }
+
+    function openKeyModal() {
+      document.getElementById('keyModal').classList.remove('hidden');
+    }
+    function closeKeyModal() {
+      document.getElementById('keyModal').classList.add('hidden');
+    }
+
+    async function saveApiKey() {
+      const keyVal = document.getElementById('modalApiKey').value.trim();
+      const saveEnv = document.getElementById('modalSaveEnv').checked;
+      if (!keyVal) {
+        alert('Please enter a valid API key.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/config/key', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({api_key: keyVal, save_to_env: saveEnv})
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Failed to save key');
+        closeKeyModal();
+        await checkKeyStatus();
+      } catch (err) {
+        alert('Error saving API Key: ' + err.message);
+      }
+    }
+
+    async function refreshStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        document.getElementById('headerSamplesCount').innerText = data.total_samples;
+        document.getElementById('headerFileSize').innerText = `${data.file_size_kb} KB`;
+        document.getElementById('committedBadge').innerText = data.total_samples;
+      } catch (err) {
+        console.error('Stats update failed:', err);
+      }
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      const tabStagingBtn = document.getElementById('tabStagingBtn');
+      const tabCommittedBtn = document.getElementById('tabCommittedBtn');
+      const stagingView = document.getElementById('stagingView');
+      const committedView = document.getElementById('committedView');
+      const stagingActions = document.getElementById('stagingBatchActions');
+      const committedActions = document.getElementById('committedSearchActions');
+
+      if (tab === 'staging') {
+        tabStagingBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-400 border border-indigo-800/50 flex items-center space-x-1.5 transition';
+        tabCommittedBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-800 flex items-center space-x-1.5 transition';
+        stagingView.classList.remove('hidden');
+        committedView.classList.add('hidden');
+        if (stagedSamples.length > 0) stagingActions.classList.remove('hidden');
+        committedActions.classList.add('hidden');
+      } else {
+        tabCommittedBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 text-indigo-400 border border-indigo-800/50 flex items-center space-x-1.5 transition';
+        tabStagingBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 border border-transparent hover:border-slate-800 flex items-center space-x-1.5 transition';
+        committedView.classList.remove('hidden');
+        stagingView.classList.add('hidden');
+        stagingActions.classList.add('hidden');
+        committedActions.classList.remove('hidden');
+        loadCommitted();
+      }
+    }
+
+    async function runGeneration() {
+      const topic = document.getElementById('topicInput').value.trim();
+      const count = parseInt(document.getElementById('countSlider').value);
+      const customPrompt = document.getElementById('customPromptInput').value.trim();
+      const model = document.getElementById('modelSelect').value;
+      const autoCommit = !document.getElementById('reviewToggle').checked;
+
+      if (!topic) {
+        alert('Please provide or select a target topic.');
+        return;
+      }
+
+      const runBtn = document.getElementById('runBtn');
+      const statusBox = document.getElementById('statusBox');
+      const statusTitle = document.getElementById('statusTitle');
+      const statusDetail = document.getElementById('statusDetail');
+
+      runBtn.disabled = true;
+      runBtn.classList.add('opacity-75', 'cursor-not-allowed');
+      statusBox.classList.remove('hidden');
+
+      statusTitle.innerText = `Distilling ${count} samples with ${model}...`;
+      statusDetail.innerText = 'Calling Gemini API with structured response schema...';
+
+      try {
+        const payload = {
+          topic: topic,
+          count: count,
+          custom_prompt: customPrompt || null,
+          model: model,
+          auto_commit: autoCommit
+        };
+
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || 'Generation failed.');
+        }
+
+        const data = await res.json();
+        
+        statusTitle.innerText = 'Validation & Tokenization complete!';
+        statusDetail.innerText = `Generated ${data.total_generated} samples (${data.valid_count} valid, ${data.rejected_count} rejected).`;
+
+        if (autoCommit) {
+          await refreshStats();
+          alert(`Auto-committed ${data.committed} valid samples directly to data/cs_programming_dataset.jsonl!`);
+        } else {
+          const combined = [...(data.valid_samples || []), ...(data.rejected_samples || [])];
+          stagedSamples = [...stagedSamples, ...combined];
+          renderStaging();
+          switchTab('staging');
+        }
+
+      } catch (err) {
+        statusTitle.innerText = 'Distillation Error';
+        statusDetail.innerText = err.message;
+        alert('Distillation Error: ' + err.message);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+      }
+    }
+
+    function renderStaging() {
+      const emptyEl = document.getElementById('stagingEmpty');
+      const listEl = document.getElementById('stagingList');
+      const badge = document.getElementById('stagingBadge');
+      const stagingActions = document.getElementById('stagingBatchActions');
+
+      badge.innerText = stagedSamples.length;
+
+      if (stagedSamples.length === 0) {
+        emptyEl.classList.remove('hidden');
+        listEl.classList.add('hidden');
+        stagingActions.classList.add('hidden');
+        return;
+      }
+
+      emptyEl.classList.add('hidden');
+      listEl.classList.remove('hidden');
+      if (activeTab === 'staging') stagingActions.classList.remove('hidden');
+
+      listEl.innerHTML = '';
+
+      stagedSamples.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = `border rounded-xl p-4 bg-slate-900 shadow-sm transition space-y-3 ${
+          item.is_valid ? 'border-slate-800' : 'border-rose-900/60 bg-rose-950/10'
+        }`;
+
+        const userMsg = item.messages.find(m => m.role === 'user')?.content || '';
+        const asstMsg = item.messages.find(m => m.role === 'assistant')?.content || '';
+
+        const tokenBadge = item.is_overflow
+          ? `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-950 text-amber-400 border border-amber-800/80">⚠️ ${item.estimated_tokens} tokens (Context Warning)</span>`
+          : `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300">~${item.estimated_tokens} tokens</span>`;
+
+        const validationBadge = item.is_valid
+          ? `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/80">✓ Validated</span>`
+          : `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-rose-950 text-rose-400 border border-rose-800/80">✕ Rejected (${item.failure_reasons.join(', ')})</span>`;
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-mono font-bold text-slate-400">#${index + 1}</span>
+              <span class="text-xs font-medium text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/40">${escapeHtml(item.topic || 'General')}</span>
+              ${tokenBadge}
+              ${validationBadge}
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="commitStagedItem(${index})" class="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition shadow-sm">
+                Commit
+              </button>
+              <button onclick="discardStagedItem(${index})" class="px-2 py-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 text-xs transition">
+                Discard
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
+            <span class="text-[10px] font-mono font-semibold uppercase text-slate-400 tracking-wider">User Instruction</span>
+            <p class="text-xs text-slate-200 whitespace-pre-wrap">${escapeHtml(userMsg)}</p>
+          </div>
+
+          <div class="space-y-1">
+            <button onclick="toggleCardResponse('asst_${index}')" class="text-xs text-indigo-400 hover:text-indigo-300 font-mono flex items-center space-x-1">
+              <span>View Generated Solution & Complexity</span>
+              <span id="chevron_asst_${index}">▼</span>
+            </button>
+            <div id="asst_${index}" class="hidden mt-2 bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-96 overflow-y-auto">
+              ${escapeHtml(asstMsg)}
+            </div>
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    function toggleCardResponse(id) {
+      const el = document.getElementById(id);
+      const chevron = document.getElementById('chevron_' + id);
+      el.classList.toggle('hidden');
+      chevron.innerText = el.classList.contains('hidden') ? '▼' : '▲';
+    }
+
+    async function commitStagedItem(index) {
+      const item = stagedSamples[index];
+      try {
+        const res = await fetch('/api/samples/commit', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({samples: [item]})
+        });
+        if (!res.ok) throw new Error('Commit failed');
+        stagedSamples.splice(index, 1);
+        renderStaging();
+        await refreshStats();
+      } catch (err) {
+        alert('Commit error: ' + err.message);
+      }
+    }
+
+    function discardStagedItem(index) {
+      stagedSamples.splice(index, 1);
+      renderStaging();
+    }
+
+    async function commitAllStaged() {
+      const validItems = stagedSamples.filter(s => s.is_valid);
+      if (validItems.length === 0) {
+        alert('No valid samples to commit.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/samples/commit', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({samples: validItems})
+        });
+        if (!res.ok) throw new Error('Commit all failed');
+        stagedSamples = stagedSamples.filter(s => !s.is_valid);
+        renderStaging();
+        await refreshStats();
+        alert(`Committed ${validItems.length} valid samples to data/cs_programming_dataset.jsonl!`);
+      } catch (err) {
+        alert('Commit error: ' + err.message);
+      }
+    }
+
+    function discardAllStaged() {
+      if (confirm('Discard all staged samples?')) {
+        stagedSamples = [];
+        renderStaging();
+      }
+    }
+
+    let searchTimeout = null;
+    function debounceSearchCommitted(val) {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        loadCommitted(val);
+      }, 300);
+    }
+
+    async function loadCommitted(query = '') {
+      try {
+        const url = query ? `/api/samples?search=${encodeURIComponent(query)}` : '/api/samples';
+        const res = await fetch(url);
+        const data = await res.json();
+        committedSamples = data.samples || [];
+
+        const emptyEl = document.getElementById('committedEmpty');
+        const listEl = document.getElementById('committedList');
+
+        if (committedSamples.length === 0) {
+          emptyEl.classList.remove('hidden');
+          listEl.classList.add('hidden');
+          return;
+        }
+
+        emptyEl.classList.add('hidden');
+        listEl.classList.remove('hidden');
+        listEl.innerHTML = '';
+
+        committedSamples.forEach((item) => {
+          const card = document.createElement('div');
+          card.className = 'border border-slate-800 rounded-xl p-4 bg-slate-900 shadow-sm space-y-3';
+
+          const userMsg = item.messages.find(m => m.role === 'user')?.content || '';
+          const asstMsg = item.messages.find(m => m.role === 'assistant')?.content || '';
+
+          card.innerHTML = `
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-mono font-bold text-slate-400">Line #${item.index + 1}</span>
+                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300">~${item.estimated_tokens} tokens</span>
+              </div>
+              <button onclick="deleteCommittedItem(${item.index})" class="text-xs px-2 py-1 rounded text-rose-400 hover:bg-rose-950/40 border border-rose-900/50 transition">
+                Delete from JSONL
+              </button>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
+              <span class="text-[10px] font-mono font-semibold uppercase text-slate-400 tracking-wider">Instruction</span>
+              <p class="text-xs text-slate-200 whitespace-pre-wrap">${escapeHtml(userMsg)}</p>
+            </div>
+            <div class="space-y-1">
+              <button onclick="toggleCardResponse('comm_${item.index}')" class="text-xs text-indigo-400 hover:text-indigo-300 font-mono flex items-center space-x-1">
+                <span>View Solution</span>
+                <span id="chevron_comm_${item.index}">▼</span>
+              </button>
+              <div id="comm_${item.index}" class="hidden mt-2 bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-96 overflow-y-auto">
+                ${escapeHtml(asstMsg)}
+              </div>
+            </div>
+          `;
+          listEl.appendChild(card);
+        });
+
+      } catch (err) {
+        console.error('Failed to load committed dataset:', err);
+      }
+    }
+
+    async function deleteCommittedItem(index) {
+      if (!confirm(`Delete sample at line #${index + 1} from dataset?`)) return;
+      try {
+        const res = await fetch(`/api/samples/${index}`, {method: 'DELETE'});
+        if (!res.ok) throw new Error('Delete failed');
+        await loadCommitted();
+        await refreshStats();
+      } catch (err) {
+        alert('Delete error: ' + err.message);
+      }
+    }
+
+    async function refreshCommitted() {
+      await loadCommitted();
+      await refreshStats();
+    }
+
+    async function runSanitizeDataset() {
+      try {
+        const res = await fetch('/api/dataset/sanitize', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.fixed_occurrences > 0) {
+            alert(`Sanitization complete: Fixed ${data.fixed_occurrences} directive anomalies in dataset!`);
+          } else {
+            alert(`Dataset is 100% clean (0 invalid directives found).`);
+          }
+          await refreshStats();
+          await loadCommitted();
+        } else {
+          alert(`Sanitization error: ${data.detail || 'Unknown error'}`);
+        }
+      } catch (err) {
+        alert(`Failed to run sanitizer: ${err.message}`);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
+

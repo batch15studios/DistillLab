@@ -1,0 +1,16 @@
+# DistillLab Core & API Dependencies
+google-genai>=2.0.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# Optional Unsloth & ML Fine-Tuning Dependencies (Linux / Colab / Cloud GPU)
+# unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
+# torch
+# transformers
+# trl
+# peft
+# accelerate
+# bitsandbytes
+# datasets
