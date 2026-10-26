@@ -36,7 +36,7 @@ def sanitize_dataset(file_path: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Headless Unsloth Trainer for 'batchcode' (Qwen2.5-Coder-1.5B)")
-    parser.add_argument("--dataset", type=str, default="datacs_programming_dataset.jsonl", help="Path to .jsonl dataset")
+    parser.add_argument("--dataset", type=str, default="data/batchcode_balanced_dataset.jsonl", help="Path to .jsonl dataset")
     parser.add_argument("--model-name", type=str, default="Qwen/Qwen2.5-Coder-1.5B-Instruct", help="Base HF model")
     parser.add_argument("--output-name", type=str, default="batchcode", help="Export model directory and Ollama name")
     parser.add_argument("--max-seq-length", type=int, default=2048, help="Context sequence length")
@@ -52,9 +52,10 @@ def main():
     if not os.path.exists(dataset_path):
         # Fallback alternatives
         alt_paths = [
-            os.path.join("data", "cs_programming_dataset.jsonl"),
-            os.path.join(os.path.dirname(__file__), "datacs_programming_dataset.jsonl"),
-            os.path.join(os.path.dirname(__file__), "data", "cs_programming_dataset.jsonl")
+            os.path.join(os.path.dirname(__file__), "data", "batchcode_balanced_dataset.jsonl"),
+            os.path.join("data", "batchcode_balanced_dataset.jsonl"),
+            os.path.join(os.path.dirname(__file__), "data", "cs_programming_dataset.jsonl"),
+            os.path.join("data", "cs_programming_dataset.jsonl")
         ]
         for alt in alt_paths:
             if os.path.exists(alt):
